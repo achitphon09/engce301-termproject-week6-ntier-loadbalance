@@ -1,0 +1,100 @@
+# ==============================================================
+# Docker Compose — N-Tier + Redis + Load Balancing
+# ENGSE207 Term Project Week 6
+#
+# Services:
+#   1. db     — PostgreSQL (Persistent Data)
+#   2. redis  — Redis (Cache Layer) ← NEW!
+#   3. app    — Node.js API ×3 instances ← SCALABLE!
+#   4. nginx  — Load Balancer + Static Files
+#
+# Usage:
+#   docker compose up -d --scale app=3
+#   docker compose logs -f app
+#   docker compose down -v
+# ==============================================================
+
+services:
+  # === Database (Tier 3b) ===
+  db:
+    image: postgres:16-alpine
+    container_name: taskboard-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-taskboard_db}
+      POSTGRES_USER: ${POSTGRES_USER:-taskboard}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-taskboard123}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-taskboard}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - taskboard-ntier
+
+  # === Redis Cache (Tier 3a) — NEW! ===
+  redis:
+    image: redis:7-alpine
+    container_name: taskboard-redis
+    restart: unless-stopped
+    command: redis-server --maxmemory 64mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    networks:
+      - taskboard-ntier
+
+  # === App Server (Tier 2) — SCALABLE! ===
+  # ไม่ใส่ container_name เพื่อให้ scale ได้
+  app:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=development
+      - PORT=3000
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DB_NAME=${DB_NAME:-taskboard_db}
+      - DB_USER=${DB_USER:-taskboard}
+      - DB_PASSWORD=${DB_PASSWORD:-taskboard123}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_TTL=60
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - taskboard-ntier
+    # ไม่ expose port ออกนอก — ให้ Nginx เป็นทางเข้าเดียว
+
+  # === Nginx Load Balancer (Tier 1) ===
+  nginx:
+    image: nginx:alpine
+    container_name: taskboard-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./frontend:/usr/share/nginx/html:ro
+    depends_on:
+      - app
+    networks:
+      - taskboard-ntier
+
+networks:
+  taskboard-ntier:
+    driver: bridge
+
+volumes:
+  postgres_data:
