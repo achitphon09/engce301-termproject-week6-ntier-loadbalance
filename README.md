@@ -1,7 +1,7 @@
 # ENGCE301 — Week 6: N-Tier Architecture + Load Balancing with Docker
 
-> **ชื่อ:** [ใส่ชื่อจริง]  
-> **รหัสนักศึกษา:** [ใส่รหัส]  
+> **ชื่อ:** นายอชิตพล โอชารส  
+> **รหัสนักศึกษา:** 67543206027-4  
 > **วิชา:** ENGCE301 Software Engineering  
 > **สัปดาห์:** 6 — N-Tier Architecture & Docker Load Balancing
 
